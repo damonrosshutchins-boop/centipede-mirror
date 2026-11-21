@@ -22,7 +22,7 @@ button{cursor:pointer}button:disabled{opacity:.55;cursor:wait}
 <h1>Centipede (Arcade)</h1>
 <p>Runs inside Seuss Arcade using EmulatorJS. The game file and the EmulatorJS 4.2.3 runtime are served from this mirror, so everything loads through the arcade proxy.</p>
 <label for="core">Emulator core</label>
-<select id="core"><option value="fbneo">FinalBurn Neo</option><option value="mame2003_plus">MAME 2003 Plus</option></select>
+<select id="core"><option value="mame2003_plus">MAME 2003 Plus</option><option value="fbneo">FinalBurn Neo</option></select>
 <label><input id="legacy" type="checkbox"> Use legacy WebGL 1 (try if video is black)</label>
 <p>If the game has sound but a black screen, try the alternate emulator or use <strong>Open directly in this tab</strong> to avoid the nested arcade frame.</p>
 <button id="start" type="button">Start Centipede</button>
@@ -63,7 +63,17 @@ function directLaunch(){
 }
 document.getElementById("directSetup").addEventListener("click",directLaunch);
 document.getElementById("directGame").addEventListener("click",directLaunch);
-document.getElementById("restart").addEventListener("click",()=>location.reload());
+const coreSelect=document.getElementById("core");
+const CORE_KEY="seuss-centipede-core";
+try{
+ const savedCore=sessionStorage.getItem(CORE_KEY);
+ if(savedCore==="fbneo"||savedCore==="mame2003_plus")coreSelect.value=savedCore;
+}catch{}
+document.getElementById("restart").addEventListener("click",()=>{
+ const next=coreSelect.value==="fbneo"?"mame2003_plus":"fbneo";
+ try{sessionStorage.setItem(CORE_KEY,next);}catch{}
+ location.reload();
+});
 function failed(error){
  report("Launch failed: "+(error?.message||String(error)));
  console.error("Centipede launch failed",error);
@@ -105,7 +115,8 @@ async function launch(){
   let gameUrl=GAME;
   let gameCheck=await request(GAME);
   if(!gameCheck.ok)throw Error("Centipede ROM unavailable (HTTP "+gameCheck.status+")");
-  const wantLegacy=document.getElementById("legacy").checked;
+  try{sessionStorage.setItem(CORE_KEY,coreSelect.value);}catch{}
+ const wantLegacy=document.getElementById("legacy").checked;
   if(wantLegacy&&!document.createElement("canvas").getContext("webgl"))
    throw Error("WebGL 1 is unavailable in this browser. Uncheck legacy graphics or enable hardware acceleration.");
   if(!document.createElement("canvas").getContext("webgl")&&!document.createElement("canvas").getContext("webgl2"))
