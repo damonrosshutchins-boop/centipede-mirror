@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Centipede (Arcade) · Seuss Arcade</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:#090f14;color:#f2fff9;font:15px system-ui,sans-serif}
+body{min-height:100dvh}
+#setup{max-width:660px;margin:clamp(15px,6vh,60px) auto;padding:24px;border-radius:13px;border:1px solid #567b69;background:#172b23}
+h1{font-size:clamp(22px,3vw,30px);margin:0 0 12px}p{line-height:1.5;color:#c7e3d0}
+label{display:block;margin-top:14px}select,button{font:inherit;color:white;border-radius:8px;border:1px solid #8cbea1;background:#295643;padding:10px 13px}
+button{cursor:pointer}button:disabled{opacity:.55;cursor:wait}
+#status{margin-top:13px;white-space:pre-wrap;color:#cfeddf}
+#playerView{display:none;position:fixed;inset:0;background:#000;overflow:hidden}
+#gameHolder{position:absolute;inset:0;display:block;width:100%;height:100%}
+#game{width:100%;height:100%;display:block}
+#topControls{position:fixed;right:10px;top:9px;z-index:999999;display:none;align-items:center;gap:8px;max-width:95vw}
+#topControls button{font-size:12px;padding:7px 10px;background:#1d3445e8;border-color:#7b9cb0}
+#loadingNote{position:fixed;bottom:8px;left:8px;z-index:999998;max-width:min(650px,80vw);padding:7px 10px;border-radius:6px;background:#0e1c29dc;color:#f2fff9;font-size:12px;pointer-events:none}
+#loadingNote:empty{display:none}
+</style></head><body>
+<section id="setup">
+<h1>Centipede (Arcade)</h1>
+<p>Runs inside Seuss Arcade using EmulatorJS. The game file and the EmulatorJS 4.2.3 runtime are served from this mirror, so everything loads through the arcade proxy.</p>
+<label for="core">Emulator core</label>
+<select id="core"><option value="fbneo">FinalBurn Neo</option><option value="mame2003_plus">MAME 2003 Plus</option></select>
+<label><input id="legacy" type="checkbox"> Use legacy WebGL 1 (try if video is black)</label>
+<p>If the game has sound but a black screen, try the alternate emulator or use <strong>Open directly in this tab</strong> to avoid the nested arcade frame.</p>
+<button id="start" type="button">Start Centipede</button>
+<button id="directSetup" type="button">Open directly in this tab</button>
+<div id="status" role="status" aria-live="polite">Ready.</div>
+</section>
+<div id="playerView"><main id="gameHolder"><div id="game"></div></main></div>
+<div id="topControls">
+ <button id="directGame" type="button">Open directly</button>
+ <button id="restart" type="button">Restart with other core</button>
+</div>
+<div id="loadingNote" role="status" aria-live="polite"></div>
+<script>
+"use strict";
+const RUNTIME="./";
+const GAME="rom.zip";
+const playerView=document.getElementById("playerView");
+const setup=document.getElementById("setup");
+const start=document.getElementById("start");
+const statusNode=document.getElementById("status");
+const note=document.getElementById("loadingNote");
+let started=false;
+function report(stage,percent=null){
+ statusNode.textContent=stage;
+ note.textContent=stage;
+ if(window.parent!==window){
+  try{window.parent.postMessage({type:"seuss-arcade-progress",stage,percent},location.origin);}catch(error){console.warn("Status event:",error);}
+ }
+}
+function directLaunch(){
+ if(window.parent!==window){
+  // Parent verifies same-origin source and selected game before navigating.
+  window.parent.postMessage({type:"seuss-arcade-direct-game",id:"centipede-arcade"},location.origin);
+ }else{
+  // Already top-level: stay at the game page and reset its rendering context.
+  location.reload();
+ }
+}
+document.getElementById("directSetup").addEventListener("click",directLaunch);
+document.getElementById("directGame").addEventListener("click",directLaunch);
+document.getElementById("restart").addEventListener("click",()=>location.reload());
+function failed(error){
+ report("Launch failed: "+(error?.message||String(error)));
+ console.error("Centipede launch failed",error);
+ setup.style.display="block";
+ playerView.style.display="none";
+ document.getElementById("topControls").style.display="none";
+ start.disabled=false;
+ started=false;
+}
+async function request(url,method="GET",ms=45000){
+ // One proxied fetch can fail while the relay drops and reopens its socket, so
+ // retry a few times before declaring the runtime unavailable.
+ let last=null;
+ for(let attempt=0;attempt<4;attempt++){
+  try{
+   const response=await fetch(url,{method,mode:"cors",cache:"no-store",signal:AbortSignal.timeout(ms)});
+   if(response.ok)return response;
+   last=response;
+  }catch(error){last=error;}
+  await new Promise(resolve=>setTimeout(resolve,400*(attempt+1)));
+ }
+ if(last instanceof Response)return last;
+ throw last||Error("Request failed");
+}
+window.addEventListener("error",event=>{
+ if(started&&event.message)report("Emulator script error: "+event.message);
+});
+window.addEventListener("unhandledrejection",event=>{
+ if(started)report("Emulator error: "+(event.reason?.message||String(event.reason)));
+});
+async function launch(){
+ if(started)return;
+ started=true;start.disabled=true;
+ report("Checking the approved game file and EmulatorJS…");
+ try{
+  const runtime=RUNTIME;
+  const loader=await request(runtime+"loader.js");
+  if(!loader.ok)throw Error("EmulatorJS runtime unavailable (HTTP "+loader.status+")");
+  let gameUrl=GAME;
+  let gameCheck=await request(GAME);
+  if(!gameCheck.ok)throw Error("Centipede ROM unavailable (HTTP "+gameCheck.status+")");
+  const wantLegacy=document.getElementById("legacy").checked;
+  if(wantLegacy&&!document.createElement("canvas").getContext("webgl"))
+   throw Error("WebGL 1 is unavailable in this browser. Uncheck legacy graphics or enable hardware acceleration.");
+  if(!document.createElement("canvas").getContext("webgl")&&!document.createElement("canvas").getContext("webgl2"))
+   throw Error("WebGL is not available. Check your browser graphics settings.");
+  window.EJS_player="#game";
+  window.EJS_core=document.getElementById("core").value;
+  window.EJS_gameName="Centipede (Arcade)";
+  window.EJS_gameUrl=gameUrl;
+  window.EJS_pathtodata=runtime;
+  window.EJS_startOnLoaded=true;
+  window.EJS_threads=false;
+  window.EJS_forceLegacyCores=wantLegacy;
+  window.EJS_disableLocalStorage=true;
+  window.EJS_color="#65b2cf";
+  window.EJS_ready=()=>report("Emulator ready · downloading graphics core…");
+  window.EJS_onGameStart=()=>{
+   report("Centipede core started. Checking video display…",100);
+   // Do not alter the framebuffer or override EmulatorJS's internal canvas.
+   setTimeout(()=>{
+    const canvas=document.querySelector("#game canvas.ejs_canvas");
+    if(!canvas){
+     report("The emulator started without a visible canvas. Try Open directly, or restart with the alternate core.");
+     return;
+    }
+    const bounds=canvas.getBoundingClientRect();
+    if(bounds.width<2||bounds.height<2){
+     report("Canvas is hidden ("+Math.round(bounds.width)+"×"+Math.round(bounds.height)+"). Try Open directly.");
+     return;
+    }
+    report("Centipede emulator is running. If the picture is black, restart with the alternate core.",100);
+   },6000);
+  };
+  setup.style.display="none";
+  playerView.style.display="block";
+  document.getElementById("topControls").style.display="flex";
+  report("Starting the emulator and game…");
+  const script=document.createElement("script");
+  script.src=runtime+"loader.js";
+  script.onerror=()=>failed(Error("EmulatorJS loader could not be executed."));
+  document.body.appendChild(script);
+ }catch(error){failed(error);}
+}
+start.addEventListener("click",launch);
+</script></body></html>
