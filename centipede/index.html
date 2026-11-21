@@ -152,7 +152,7 @@ async function launch(){
      report("EmulatorJS failed to start the "+core+" core. Try Restart with other core.");
      return;
     }
-    if(typeof frames==="number"&&frames>lastFrameCount){
+    if(typeof frames==="number"){
      sawFrameCounter=true;
      lastFrameCount=frames;
      if(frames>0){
