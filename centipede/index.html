@@ -138,7 +138,7 @@ async function launch(){
   window.EJS_onGameStart=()=>{
    report("Core started · checking whether Centipede is actually rendering…");
    const beganAt=Date.now();
-   let lastFrameCount=null;
+   let lastFrameCount=null,sawFrameCounter=false;
    const check=setInterval(()=>{
     const canvas=document.querySelector("#game canvas.ejs_canvas");
     const emulator=window.EJS_emulator;
@@ -153,6 +153,7 @@ async function launch(){
      return;
     }
     if(typeof frames==="number"&&frames>lastFrameCount){
+     sawFrameCounter=true;
      lastFrameCount=frames;
      if(frames>0){
       clearInterval(check);
@@ -166,6 +167,7 @@ async function launch(){
      let reason;
      if(!canvas)reason="the emulator never created a canvas";
      else if(bounds&&(bounds.width<2||bounds.height<2))reason="its canvas is hidden ("+Math.round(bounds.width)+"×"+Math.round(bounds.height)+")";
+     else if(!sawFrameCounter)reason="the "+core+" core does not report frame counts, so the picture could not be verified";
      else reason="the "+core+" core has rendered 0 frames, so it is sitting on RetroArch's menu instead of running the game"+(content?" (it picked up "+content+", so the romset was read but rejected)":"");
      report("Core started, but Centipede is not running: "+reason+". Use Restart with other core.");
     }
