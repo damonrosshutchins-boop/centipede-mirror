@@ -137,12 +137,12 @@ async function launch(){
   window.EJS_color="#65b2cf";
   window.EJS_ready=()=>report("Emulator ready · downloading graphics core…");
   // EJS_onGameStart fires as soon as the core starts, which happens even when
-  // RetroArch rejects the romset and opens its own menu. Only claim the game is
-  // running once the core reports rendered frames; otherwise say so plainly.
+  // RetroArch rejects the romset and opens its own menu. A menu still paints a
+  // few frames, so only a sustained frame rate proves the game is running.
   window.EJS_onGameStart=()=>{
    report("Core started · checking whether Centipede is actually rendering…");
    const beganAt=Date.now();
-   let lastFrameCount=null,sawFrameCounter=false;
+   let lastFrameCount=null,lastSampleAt=0,bestRate=0,sawFrameCounter=false;
    const check=setInterval(()=>{
     const canvas=document.querySelector("#game canvas.ejs_canvas");
     const emulator=window.EJS_emulator;
@@ -158,10 +158,16 @@ async function launch(){
     }
     if(typeof frames==="number"){
      sawFrameCounter=true;
-     lastFrameCount=frames;
-     if(frames>0){
+     const now=Date.now();
+     if(lastFrameCount===null){lastFrameCount=frames;lastSampleAt=now;}
+     else if(now-lastSampleAt>=900){
+      const rate=(frames-lastFrameCount)/((now-lastSampleAt)/1000);
+      if(rate>bestRate)bestRate=rate;
+      lastFrameCount=frames;lastSampleAt=now;
+     }
+     if(bestRate>=10){
       clearInterval(check);
-      report("Centipede is running · "+core+" · "+frames+" frames"+(content?" · content "+content:""),100);
+      report("Centipede is running · "+core+" · "+Math.round(bestRate)+" fps"+(content?" · content "+content:""),100);
       return;
      }
     }
@@ -172,7 +178,8 @@ async function launch(){
      if(!canvas)reason="the emulator never created a canvas";
      else if(bounds&&(bounds.width<2||bounds.height<2))reason="its canvas is hidden ("+Math.round(bounds.width)+"×"+Math.round(bounds.height)+")";
      else if(!sawFrameCounter)reason="the "+core+" core does not report frame counts, so the picture could not be verified";
-     else reason="the "+core+" core has rendered 0 frames, so it is sitting on RetroArch's menu instead of running the game"+(content?" (it picked up "+content+", so the romset was read but rejected)":"");
+     else if(bestRate<1)reason="the "+core+" core is not painting frames ("+(lastFrameCount||0)+" frames so far), so it is sitting on RetroArch's menu instead of running the game"+(content?" (it picked up "+content+", so the romset was read but rejected)":"");
+     else reason="the "+core+" core is only drawing about "+Math.round(bestRate)+" frames per second, far too slow for a running game, so it has not started the content"+(content?" (it picked up "+content+")":"");
      report("Core started, but Centipede is not running: "+reason+". Use Restart with other core.");
     }
    },1000);
