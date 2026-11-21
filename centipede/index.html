@@ -112,7 +112,7 @@ async function launch(){
   const runtime=RUNTIME;
   const loader=await request(runtime+"loader.js");
   if(!loader.ok)throw Error("EmulatorJS runtime unavailable (HTTP "+loader.status+")");
-  let gameUrl=GAME;
+  let gameUrl=new URL(GAME,location.href).href;
   let gameCheck=await request(GAME);
   if(!gameCheck.ok)throw Error("Centipede ROM unavailable (HTTP "+gameCheck.status+")");
   try{sessionStorage.setItem(CORE_KEY,coreSelect.value);}catch{}
