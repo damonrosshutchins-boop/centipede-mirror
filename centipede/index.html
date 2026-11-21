@@ -132,22 +132,44 @@ async function launch(){
   window.EJS_disableLocalStorage=true;
   window.EJS_color="#65b2cf";
   window.EJS_ready=()=>report("Emulator ready · downloading graphics core…");
+  // EJS_onGameStart fires as soon as the core starts, which happens even when
+  // RetroArch rejects the romset and opens its own menu. Only claim the game is
+  // running once the core reports rendered frames; otherwise say so plainly.
   window.EJS_onGameStart=()=>{
-   report("Centipede core started. Checking video display…",100);
-   // Do not alter the framebuffer or override EmulatorJS's internal canvas.
-   setTimeout(()=>{
+   report("Core started · checking whether Centipede is actually rendering…");
+   const beganAt=Date.now();
+   let lastFrameCount=null;
+   const check=setInterval(()=>{
     const canvas=document.querySelector("#game canvas.ejs_canvas");
-    if(!canvas){
-     report("The emulator started without a visible canvas. Try Open directly, or restart with the alternate core.");
+    const emulator=window.EJS_emulator;
+    const manager=emulator&&emulator.gameManager;
+    const core=(emulator&&emulator.coreName)||coreSelect.value;
+    let frames=null,content="";
+    try{frames=manager.Module._get_current_frame_count();}catch{}
+    try{const path=manager.functions.getSaveFilePath();content=path?String(path).split("/").pop():"";}catch{}
+    if(emulator&&emulator.failedToStart){
+     clearInterval(check);
+     report("EmulatorJS failed to start the "+core+" core. Try Restart with other core.");
      return;
     }
-    const bounds=canvas.getBoundingClientRect();
-    if(bounds.width<2||bounds.height<2){
-     report("Canvas is hidden ("+Math.round(bounds.width)+"×"+Math.round(bounds.height)+"). Try Open directly.");
-     return;
+    if(typeof frames==="number"&&frames>lastFrameCount){
+     lastFrameCount=frames;
+     if(frames>0){
+      clearInterval(check);
+      report("Centipede is running · "+core+" · "+frames+" frames"+(content?" · content "+content:""),100);
+      return;
+     }
     }
-    report("Centipede emulator is running. If the picture is black, restart with the alternate core.",100);
-   },6000);
+    if(Date.now()-beganAt>15000){
+     clearInterval(check);
+     const bounds=canvas?canvas.getBoundingClientRect():null;
+     let reason;
+     if(!canvas)reason="the emulator never created a canvas";
+     else if(bounds&&(bounds.width<2||bounds.height<2))reason="its canvas is hidden ("+Math.round(bounds.width)+"×"+Math.round(bounds.height)+")";
+     else reason="the "+core+" core has rendered 0 frames, so it is sitting on RetroArch's menu instead of running the game"+(content?" (it picked up "+content+", so the romset was read but rejected)":"");
+     report("Core started, but Centipede is not running: "+reason+". Use Restart with other core.");
+    }
+   },1000);
   };
   setup.style.display="none";
   playerView.style.display="block";
