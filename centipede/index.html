@@ -98,11 +98,15 @@ async function request(url,method="GET",ms=45000){
  if(last instanceof Response)return last;
  throw last||Error("Request failed");
 }
+// A backgrounded tab cannot take a Wake Lock; that rejection says nothing about
+// the game and must not replace the status line.
+const harmless=message=>/wake\s*lock/i.test(String(message||""));
 window.addEventListener("error",event=>{
- if(started&&event.message)report("Emulator script error: "+event.message);
+ if(started&&event.message&&!harmless(event.message))report("Emulator script error: "+event.message);
 });
 window.addEventListener("unhandledrejection",event=>{
- if(started)report("Emulator error: "+(event.reason?.message||String(event.reason)));
+ const message=event.reason?.message||String(event.reason);
+ if(started&&!harmless(message))report("Emulator error: "+message);
 });
 async function launch(){
  if(started)return;
