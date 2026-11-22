@@ -9,10 +9,7 @@
   const blobs=new Map(),create=URL.createObjectURL.bind(URL);
   URL.createObjectURL=value=>{
     const url=create(value);
-    if(value instanceof Blob)value.text().then(text=>{
-      blobs.set(url,text);
-      console.info("[ejs-blob] created",url.slice(-8),text.length+" chars",text.split("\n").length+" lines");
-    }).catch(()=>{});
+    if(value instanceof Blob)value.text().then(text=>blobs.set(url,text)).catch(()=>{});
     return url;
   };
   const report=(kind,message,line,col,source)=>{
