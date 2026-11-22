@@ -1,6 +1,40 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Centipede (Arcade) · Seuss Arcade</title>
+<script>
+/* Diagnostics: EJS runs its 7z worker and core from in-memory blobs, so a failure
+   there only reports "blob:" with no stack. Record each blob and print the
+   failing source line at the error column. */
+(()=>{try{
+  const blobs=new Map(),create=URL.createObjectURL.bind(URL);
+  URL.createObjectURL=value=>{
+    const url=create(value);
+    if(value instanceof Blob)value.text().then(text=>{
+      blobs.set(url,text);
+      console.info("[ejs-blob] created",url.slice(-8),text.length+" chars",text.split("\n").length+" lines");
+    }).catch(()=>{});
+    return url;
+  };
+  const report=(kind,message,line,col,source)=>{
+    console.warn("[ejs-blob] "+kind+": "+message+" @ line "+line+" col "+col+" src "+String(source).slice(0,50)+" known "+blobs.size);
+    // The failing script is usually a proxy-mapped blob we never saw created, so
+    // fetch it by its reported URL and print the source at the failing column.
+    fetch(source).then(response=>response.text()).then(text=>{
+      const row=(text.split("\n")[(line||1)-1]||"");
+      const at=Math.max(0,(col||0)-220);
+      console.error("[ejs-blob] source "+text.length+" chars, line "+(line||1)+" | "+row.slice(at,at+440));
+    }).catch(error=>console.warn("[ejs-blob] source unavailable: "+error.message));
+  };
+  const Native=window.Worker;
+  window.Worker=function(url,options){
+    const worker=new Native(url,options);
+    worker.addEventListener("error",event=>report("worker",event.message,event.lineno,event.colno,url));
+    return worker;
+  };
+  window.Worker.prototype=Native.prototype;
+  window.addEventListener("error",event=>report("script",event.message,event.lineno,event.colno,event.filename));
+}catch(error){console.warn("EJS blob diagnostics unavailable",error)}})();
+</script>
 <style>
 :root{color-scheme:dark}*{box-sizing:border-box}
 html,body{margin:0;min-height:100%;background:#090f14;color:#f2fff9;font:15px system-ui,sans-serif}
@@ -195,4 +229,7 @@ async function launch(){
  }catch(error){failed(error);}
 }
 start.addEventListener("click",launch);
+// The arcade frames this page from a different origin, so it cannot press Start
+// for the player. ?autostart=1 begins the emulator as soon as the page is ready.
+if(new URLSearchParams(location.search).get("autostart")==="1")setTimeout(()=>{if(!started)launch();},400);
 </script></body></html>
