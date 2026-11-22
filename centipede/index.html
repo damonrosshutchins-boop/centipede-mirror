@@ -51,9 +51,9 @@ button{cursor:pointer}button:disabled{opacity:.55;cursor:wait}
 </style></head><body>
 <section id="setup">
 <h1>Centipede (Arcade)</h1>
-<p>Runs inside Seuss Arcade using EmulatorJS. The game file and the EmulatorJS 4.2.3 runtime are served from this mirror, so everything loads through the arcade proxy.</p>
+<p>Runs inside Seuss Arcade using EmulatorJS 4.2.3. The game file and runtime load from this page's own folder when it is published together with them, and from the approved Cloudflare route when it is served without them.</p>
 <label for="core">Emulator core</label>
-<select id="core"><option value="mame2003_plus">MAME 2003 Plus</option><option value="fbneo">FinalBurn Neo</option></select>
+<select id="core"><option value="fbneo">FinalBurn Neo</option><option value="mame2003_plus">MAME 2003 Plus</option></select>
 <label><input id="legacy" type="checkbox"> Use legacy WebGL 1 (try if video is black)</label>
 <p>If the game has sound but a black screen, try the alternate emulator or use <strong>Open directly in this tab</strong> to avoid the nested arcade frame.</p>
 <button id="start" type="button">Start Centipede</button>
@@ -68,8 +68,17 @@ button{cursor:pointer}button:disabled{opacity:.55;cursor:wait}
 <div id="loadingNote" role="status" aria-live="polite"></div>
 <script>
 "use strict";
-const RUNTIME="./";
-const GAME="centtime.zip";
+// This page is published in three places from one file: the Surge bundle, the
+// GitHub Pages mirror, and the arcade's own catalogue. The first two ship the
+// romset and the EmulatorJS runtime in the page's folder; the catalogue does
+// not, so the approved Cloudflare route stands in for them. Which one to use is
+// decided by asking for the bundled romset, not by guessing from the URL.
+const ROOT="https://seuss-arcade-relay.damonrosshutchins.workers.dev/approved-assets/imported/";
+const BUNDLED_GAME="centtime.zip";
+const REMOTE_RUNTIME=ROOT+"emu-4.2.3/";
+const REMOTE_GAME=ROOT+"centipede/rom.zip";
+let runtime="./";
+let game=BUNDLED_GAME;
 const playerView=document.getElementById("playerView");
 const setup=document.getElementById("setup");
 const start=document.getElementById("start");
@@ -139,16 +148,27 @@ window.addEventListener("unhandledrejection",event=>{
  const message=event.reason?.message||String(event.reason);
  if(started&&!harmless(message))report("Emulator error: "+message);
 });
+async function chooseAssets(){
+ // A HEAD for the bundled romset costs one small request and answers exactly
+ // what the folder holds, so no copy needs to be edited for its host.
+ const bundled=new URL(BUNDLED_GAME,location.href).href;
+ try{
+  const response=await fetch(bundled,{method:"HEAD",mode:"cors",cache:"no-store",signal:AbortSignal.timeout(15000)});
+  if(response.ok){runtime=new URL("./",location.href).href;game=bundled;return "bundle";}
+ }catch(error){console.warn("Bundled romset check failed",error);}
+ runtime=REMOTE_RUNTIME;
+ game=REMOTE_GAME;
+ return "approved route";
+}
 async function launch(){
  if(started)return;
  started=true;start.disabled=true;
- report("Checking the approved game file and EmulatorJS…");
+ report("Checking the game file and EmulatorJS…");
  try{
-  const runtime=RUNTIME;
+  const source=await chooseAssets();
   const loader=await request(runtime+"loader.js");
   if(!loader.ok)throw Error("EmulatorJS runtime unavailable (HTTP "+loader.status+")");
-  let gameUrl=new URL(GAME,location.href).href;
-  let gameCheck=await request(GAME);
+  const gameCheck=await request(game);
   if(!gameCheck.ok)throw Error("Centipede ROM unavailable (HTTP "+gameCheck.status+")");
   try{sessionStorage.setItem(CORE_KEY,coreSelect.value);}catch{}
  const wantLegacy=document.getElementById("legacy").checked;
@@ -159,7 +179,7 @@ async function launch(){
   window.EJS_player="#game";
   window.EJS_core=document.getElementById("core").value;
   window.EJS_gameName="Centipede (Arcade)";
-  window.EJS_gameUrl=gameUrl;
+  window.EJS_gameUrl=game;
   window.EJS_pathtodata=runtime;
   window.EJS_startOnLoaded=true;
   window.EJS_threads=false;
@@ -171,7 +191,7 @@ async function launch(){
   // RetroArch rejects the romset and opens its own menu. A menu still paints a
   // few frames, so only a sustained frame rate proves the game is running.
   window.EJS_onGameStart=()=>{
-   report("Core started · checking whether Centipede is actually rendering…");
+   report("Core started · checking whether Centipede is actually rendering… ("+source+")");
    const beganAt=Date.now();
    let lastFrameCount=null,lastSampleAt=0,bestRate=0,sawFrameCounter=false;
    const check=setInterval(()=>{
